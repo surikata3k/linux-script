@@ -29,7 +29,10 @@ Cambios disponibles:
 - Configura los servidores DNS de `/etc/resolv.conf` (propone `1.1.1.1`; se pueden poner varios
   separados por espacios). Conserva las líneas `search`, `domain` y `options`.
 - Pone `GRUB_TIMEOUT=0` en `/etc/default/grub` y ejecuta `update-grub`.
+- Añade `IP: \4` a `/etc/issue` para que la pantalla de login de la consola muestre la IPv4 del equipo.
 - Pone el prompt de `root` en rojo (en `/root/.bashrc`; se puede ejecutar varias veces sin duplicarlo).
+- Reinicia el equipo al terminar (siempre es la última opción y no está marcada por defecto;
+  espera 10 segundos y se puede cancelar con Ctrl+C).
 
 ## Uso
 

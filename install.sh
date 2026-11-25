@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 #
 # install.sh — Configuración inicial de Debian (openssh-server, curl, sudo, git,
-#              nombre del equipo, usuario en sudo, red, DNS, GRUB y prompt de root en rojo)
+#              nombre del equipo, usuario en sudo, red, DNS, GRUB, IP en /etc/issue
+#              y prompt de root en rojo)
 #
 # Ejecución en una línea:
 #   curl -fsSL https://raw.githubusercontent.com/surikata3k/linux-script/main/install.sh | sudo bash
@@ -479,10 +480,47 @@ configurar_grub() {
   fi
 }
 
+# ---------- IP en la pantalla de login (/etc/issue) ----------
+FICHERO_ISSUE="/etc/issue"
+LINEA_ISSUE='IP: \4'   # getty sustituye \4 por la dirección IPv4 del equipo
+ip_en_issue() {
+  if [ -f "$FICHERO_ISSUE" ] && grep -qxF "$LINEA_ISSUE" "$FICHERO_ISSUE"; then
+    info "$FICHERO_ISSUE ya contiene '$LINEA_ISSUE'."
+    return 0
+  fi
+  info "Añadiendo '$LINEA_ISSUE' a $FICHERO_ISSUE..."
+  copia_seguridad "$FICHERO_ISSUE"
+  touch "$FICHERO_ISSUE"
+  # Se añade tras el texto existente (quitando las líneas vacías del final) y se deja
+  # una línea en blanco antes del "login:", como en el fichero original de Debian.
+  # (la línea se pasa por el entorno: "awk -v" convertiría \4 en un carácter de control)
+  LINEA="$LINEA_ISSUE" awk '
+    /^[[:space:]]*$/ { vacias++; next }
+    { while (vacias > 0) { print ""; vacias-- }; print }
+    END { print ENVIRON["LINEA"]; print "" }
+  ' "$FICHERO_ISSUE" > "$FICHERO_ISSUE.tmp"
+  cat "$FICHERO_ISSUE.tmp" > "$FICHERO_ISSUE"
+  rm -f "$FICHERO_ISSUE.tmp"
+}
+
+# ---------- Reinicio ----------
+reiniciar_equipo() {
+  local i
+  aviso "El equipo se reiniciará en 10 segundos (Ctrl+C para cancelar)..."
+  for i in 10 9 8 7 6 5 4 3 2 1; do printf '%s ' "$i"; sleep 1; done
+  echo
+  if command -v systemctl >/dev/null 2>&1 && [ -d /run/systemd/system ]; then
+    systemctl reboot
+  else
+    reboot
+  fi
+}
+
 # ---------- Menú de selección ----------
 # Cada cambio tiene un identificador, una descripción y si está marcado (1) o no (0).
-TAREAS=(nombre pkg:openssh-server pkg:curl pkg:sudo pkg:git ssh usuario_sudo red dns_dhcp dns grub prompt)
-SELECCION=(1   1                  1        1        1       1   1            1   1        1   1    1)
+TAREAS=(nombre pkg:openssh-server pkg:curl pkg:sudo pkg:git ssh usuario_sudo red dns_dhcp dns grub issue prompt reiniciar)
+SELECCION=(1   1                  1        1        1       1   1            1   1        1   1    1     1      0)
+# "reiniciar" va siempre al final y no está marcado por defecto.
 descripcion_tarea() {
   case "$1" in
     nombre)       echo "Cambiar el nombre del equipo y añadirlo a /etc/hosts como nombre.${DOMINIO_LOCAL}" ;;
@@ -494,9 +532,11 @@ descripcion_tarea() {
     red)          echo "Configurar las interfaces de red IPv4 (DHCP, manual o desactivada)" ;;
     dns_dhcp)     echo "Desactivar el DNS del DHCP (nohook resolv.conf en $FICHERO_DHCPCD)" ;;
     dns)          echo "Configurar los servidores DNS de $FICHERO_RESOLV (por defecto $DNS_POR_DEFECTO)" ;;
+    issue)        echo "Mostrar la IP en la pantalla de login (añadir '$LINEA_ISSUE' a $FICHERO_ISSUE)" ;;
     grub)         local t; t=$( [ -f "$FICHERO_GRUB" ] && sed -n -E 's/^[[:space:]]*GRUB_TIMEOUT=//p' "$FICHERO_GRUB" | tail -1 )
                   echo "Poner GRUB_TIMEOUT=$GRUB_TIMEOUT_NUEVO en $FICHERO_GRUB (actual: ${t:-?}) y ejecutar update-grub" ;;
     prompt)       echo "Poner el prompt de root en rojo" ;;
+    reiniciar)    echo "Reiniciar el equipo al terminar" ;;
   esac
 }
 seleccionada() {   # ¿está marcada la tarea con este identificador?
@@ -565,7 +605,9 @@ confirmar() {
     seleccionada dns_dhcp     && echo "  - Añadir 'nohook resolv.conf' a $FICHERO_DHCPCD"
     seleccionada dns          && echo "  - DNS en $FICHERO_RESOLV: ${DNS_SERVIDORES[*]}"
     seleccionada grub         && echo "  - GRUB_TIMEOUT=$GRUB_TIMEOUT_NUEVO y update-grub"
+    seleccionada issue        && echo "  - Añadir '$LINEA_ISSUE' a $FICHERO_ISSUE"
     seleccionada prompt       && echo "  - Prompt de root en rojo"
+    seleccionada reiniciar    && echo "  - Reiniciar el equipo al terminar"
     if seleccionada dns && ! seleccionada dns_dhcp && hay_dhcp; then
       echo "  ! Aviso: alguna interfaz usa DHCP y no has marcado desactivar su DNS:"
       echo "    el cliente DHCP podría sobrescribir $FICHERO_RESOLV."
@@ -613,6 +655,7 @@ principal() {
   si_marcada dns          configurar_dns
   si_marcada red          configurar_red   # al final: no se aplica hasta reiniciar
   si_marcada grub         configurar_grub
+  si_marcada issue        ip_en_issue
   si_marcada prompt       prompt_root_rojo
   return 0
 }
@@ -633,8 +676,15 @@ main() {
   actualizar_lista_paquetes
   principal
   info "¡Terminado!"
-  if seleccionada prompt; then
-    info "Abre una nueva sesión de root (o ejecuta: source /root/.bashrc) para ver el prompt rojo."
+  if seleccionada reiniciar; then
+    reiniciar_equipo
+  else
+    if seleccionada prompt; then
+      info "Abre una nueva sesión de root (o ejecuta: source /root/.bashrc) para ver el prompt rojo."
+    fi
+    if seleccionada red && [ "${#INTERFACES[@]}" -gt 0 ]; then
+      aviso "Reinicia el equipo para aplicar la nueva configuración de red."
+    fi
   fi
 }
 
