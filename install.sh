@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 #
 # install.sh — Configuración inicial de Debian (openssh-server, curl, sudo, git,
-#              usuario en sudo y prompt de root en rojo)
+#              nombre del equipo, usuario en sudo y prompt de root en rojo)
 #
 # Ejecución en una línea:
 #   curl -fsSL https://raw.githubusercontent.com/surikata3k/linux-script/main/install.sh | sudo bash
@@ -143,8 +143,76 @@ anadir_usuario_sudo() {
   fi
 }
 
+# ---------- Nombre del equipo ----------
+DOMINIO_LOCAL="home.arpa"
+FICHERO_HOSTS="/etc/hosts"
+FICHERO_HOSTNAME="/etc/hostname"
+NOMBRE_EQUIPO=""
+
+nombre_valido() {
+  # RFC 1123: letras, números y guiones; 1-63 caracteres; sin guion al principio ni al final
+  [[ "$1" =~ ^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?$ ]]
+}
+
+preguntar_nombre_equipo() {
+  local actual respuesta
+  actual=$(hostname -s 2>/dev/null || cat "$FICHERO_HOSTNAME")
+
+  if ! { : </dev/tty; } 2>/dev/null; then
+    NOMBRE_EQUIPO="$actual"
+    aviso "Sin terminal interactiva: se mantiene el nombre del equipo '$NOMBRE_EQUIPO'."
+    return
+  fi
+
+  while true; do
+    printf '¿Nombre del equipo? [%s] (Intro para mantenerlo): ' "$actual" >/dev/tty
+    IFS= read -r respuesta </dev/tty || respuesta=""
+    respuesta="${respuesta:-$actual}"
+    respuesta="${respuesta,,}"   # a minúsculas
+    if nombre_valido "$respuesta"; then
+      NOMBRE_EQUIPO="$respuesta"
+      return
+    fi
+    error "Nombre no válido: usa solo letras, números y guiones (máx. 63, sin guion al principio ni al final)."
+  done
+}
+
+configurar_nombre_equipo() {
+  local fqdn="${NOMBRE_EQUIPO}.${DOMINIO_LOCAL}"
+  local linea="127.0.1.1	${fqdn} ${NOMBRE_EQUIPO}"
+
+  # /etc/hosts: sustituye la línea 127.0.1.1 (la que usa Debian para el nombre del equipo)
+  # y la coloca justo después de la de 127.0.0.1; si no existe ésta, la añade al final.
+  info "Actualizando $FICHERO_HOSTS: $fqdn"
+  touch "$FICHERO_HOSTS"
+  awk -v linea="$linea" '
+    $1 == "127.0.1.1" { next }
+    { print }
+    !hecho && $1 == "127.0.0.1" { print linea; hecho = 1 }
+    END { if (!hecho) print linea }
+  ' "$FICHERO_HOSTS" > "$FICHERO_HOSTS.tmp"
+  cat "$FICHERO_HOSTS.tmp" > "$FICHERO_HOSTS"   # conserva permisos y propietario
+  rm -f "$FICHERO_HOSTS.tmp"
+
+  if [ "$(hostname -s 2>/dev/null)" = "$NOMBRE_EQUIPO" ]; then
+    info "El nombre del equipo ya es '$NOMBRE_EQUIPO'."
+    return
+  fi
+
+  info "Cambiando el nombre del equipo a '$NOMBRE_EQUIPO'..."
+  if command -v hostnamectl >/dev/null 2>&1 && [ -d /run/systemd/system ]; then
+    hostnamectl set-hostname "$NOMBRE_EQUIPO"
+  else
+    echo "$NOMBRE_EQUIPO" > "$FICHERO_HOSTNAME"
+    hostname "$NOMBRE_EQUIPO"
+  fi
+}
+
 principal() {
-  preguntar_usuario_sudo   # se pregunta al principio para no esperar a que acabe apt
+  # Las preguntas van al principio para no tener que esperar a que acabe apt
+  preguntar_nombre_equipo
+  preguntar_usuario_sudo
+  configurar_nombre_equipo
   instalar_paquetes
   anadir_usuario_sudo
   activar_ssh

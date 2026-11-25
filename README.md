@@ -4,6 +4,8 @@ Script de configuración inicial para Debian que se descarga y ejecuta con un so
 
 ## Qué hace
 
+- Pregunta el nombre del equipo (Intro mantiene el actual), lo cambia y lo añade a `/etc/hosts`
+  como `127.0.1.1  nombre.home.arpa nombre`.
 - Pregunta qué usuario añadir al grupo `sudo`. Propone el primer usuario con carpeta en `/home`
   (pulsa Intro para aceptarlo, escribe otro nombre o `-` para no añadir ninguno).
   Sin terminal interactiva, usa el usuario propuesto.
