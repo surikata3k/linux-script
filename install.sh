@@ -506,8 +506,8 @@ ip_en_issue() {
 # ---------- Reinicio ----------
 reiniciar_equipo() {
   local i
-  aviso "El equipo se reiniciará en 10 segundos (Ctrl+C para cancelar)..."
-  for i in 10 9 8 7 6 5 4 3 2 1; do printf '%s ' "$i"; sleep 1; done
+  aviso "El equipo se reiniciará en 5 segundos (Ctrl+C para cancelar)..."
+  for i in 5 4 3 2 1; do printf '%s ' "$i"; sleep 1; done
   echo
   if command -v systemctl >/dev/null 2>&1 && [ -d /run/systemd/system ]; then
     systemctl reboot

@@ -32,7 +32,7 @@ Cambios disponibles:
 - Añade `IP: \4` a `/etc/issue` para que la pantalla de login de la consola muestre la IPv4 del equipo.
 - Pone el prompt de `root` en rojo (en `/root/.bashrc`; se puede ejecutar varias veces sin duplicarlo).
 - Reinicia el equipo al terminar (siempre es la última opción y no está marcada por defecto;
-  espera 10 segundos y se puede cancelar con Ctrl+C).
+  espera 5 segundos y se puede cancelar con Ctrl+C).
 
 ## Uso
 
