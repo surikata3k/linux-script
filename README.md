@@ -7,7 +7,10 @@ Script de configuración inicial para Debian que se descarga y ejecuta con un so
 Primero ejecuta `apt update`. Después muestra un menú con todos los cambios (todos marcados por
 defecto) para que elijas cuáles aplicar: escribe los números para marcarlos o desmarcarlos,
 `t` para todos, `n` para ninguno, Intro para continuar o `q` para salir. Antes de aplicar nada
-muestra un resumen y pide confirmación. Sin terminal interactiva, aplica todos los cambios.
+muestra un resumen y pide confirmación. Sin terminal interactiva, aplica todos los cambios
+excepto la configuración de red.
+
+Antes de modificar un fichero de configuración guarda una copia como `fichero.bak-FECHA`.
 
 Cambios disponibles:
 
@@ -18,6 +21,14 @@ Cambios disponibles:
   Sin terminal interactiva, usa el usuario propuesto.
 - Instala `openssh-server`, `curl`, `sudo` y `git` (cada paquete se puede elegir por separado).
 - Activa y arranca el servicio SSH.
+- Configura las interfaces de red IPv4 en `/etc/network/interfaces` (ifupdown): para cada
+  interfaz física elige DHCP, manual (IP/prefijo y puerta de enlace opcional) o desactivada.
+  El fichero se reescribe entero y los cambios se aplican al reiniciar el equipo.
+- Desactiva el DNS del DHCP añadiendo `nohook resolv.conf` a `/etc/dhcpcd.conf`, para que el
+  cliente DHCP (dhcpcd) no sobrescriba `/etc/resolv.conf`.
+- Configura los servidores DNS de `/etc/resolv.conf` (propone `1.1.1.1`; se pueden poner varios
+  separados por espacios). Conserva las líneas `search`, `domain` y `options`.
+- Pone `GRUB_TIMEOUT=0` en `/etc/default/grub` y ejecuta `update-grub`.
 - Pone el prompt de `root` en rojo (en `/root/.bashrc`; se puede ejecutar varias veces sin duplicarlo).
 
 ## Uso
