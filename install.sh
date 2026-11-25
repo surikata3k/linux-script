@@ -41,20 +41,29 @@ comprobar_debian() {
   info "Sistema detectado: ${PRETTY_NAME:-Debian $(cat /etc/debian_version)}"
 }
 
-# ---------- Configuración ----------
-PAQUETES=(openssh-server curl sudo git)
+# ¿Hay una terminal para preguntar? Se usa /dev/tty porque, al ejecutar con
+# "wget ... | bash", la entrada estándar es el propio script.
+hay_tty() { { : </dev/tty; } 2>/dev/null; }
 
 # ---------- Tareas ----------
-instalar_paquetes() {
-  info "Actualizando la lista de paquetes..."
+actualizar_lista_paquetes() {
+  info "Actualizando la lista de paquetes (apt update)..."
   export DEBIAN_FRONTEND=noninteractive
   apt-get update -y
+}
 
+PAQUETES=()   # se rellena según lo elegido en el menú
+instalar_paquetes() {
+  [ "${#PAQUETES[@]}" -gt 0 ] || return 0
   info "Instalando: ${PAQUETES[*]}"
   apt-get install -y "${PAQUETES[@]}"
 }
 
 activar_ssh() {
+  if ! dpkg -s openssh-server >/dev/null 2>&1; then
+    aviso "openssh-server no está instalado; no se puede activar el servicio SSH."
+    return 0
+  fi
   if command -v systemctl >/dev/null 2>&1 && [ -d /run/systemd/system ]; then
     info "Activando el servicio SSH..."
     systemctl enable --now ssh
@@ -93,14 +102,13 @@ primer_usuario_home() {
   done
 }
 
-# Pregunta qué usuario añadir a sudo. Se lee de /dev/tty porque, al ejecutar
-# con "wget ... | bash", la entrada estándar es el propio script.
+# Pregunta qué usuario añadir a sudo
 USUARIO_SUDO=""
 preguntar_usuario_sudo() {
   local propuesto respuesta
   propuesto=$(primer_usuario_home)
 
-  if ! { : </dev/tty; } 2>/dev/null; then
+  if ! hay_tty; then
     USUARIO_SUDO="$propuesto"
     if [ -n "$USUARIO_SUDO" ]; then
       aviso "Sin terminal interactiva: se usará el usuario propuesto '$USUARIO_SUDO'."
@@ -134,6 +142,13 @@ preguntar_usuario_sudo() {
 
 anadir_usuario_sudo() {
   [ -n "$USUARIO_SUDO" ] || return 0
+  if ! getent group sudo >/dev/null; then
+    aviso "El grupo sudo no existe; no se puede añadir '$USUARIO_SUDO'."
+    return 0
+  fi
+  if ! command -v sudo >/dev/null 2>&1; then
+    aviso "El paquete sudo no está instalado: '$USUARIO_SUDO' estará en el grupo, pero no podrá usar sudo hasta instalarlo."
+  fi
   if id -nG "$USUARIO_SUDO" | tr ' ' '\n' | grep -qx sudo; then
     info "El usuario '$USUARIO_SUDO' ya está en el grupo sudo."
   else
@@ -158,7 +173,7 @@ preguntar_nombre_equipo() {
   local actual respuesta
   actual=$(hostname -s 2>/dev/null || cat "$FICHERO_HOSTNAME")
 
-  if ! { : </dev/tty; } 2>/dev/null; then
+  if ! hay_tty; then
     NOMBRE_EQUIPO="$actual"
     aviso "Sin terminal interactiva: se mantiene el nombre del equipo '$NOMBRE_EQUIPO'."
     return
@@ -208,22 +223,126 @@ configurar_nombre_equipo() {
   fi
 }
 
+# ---------- Menú de selección ----------
+# Cada cambio tiene un identificador, una descripción y si está marcado (1) o no (0).
+TAREAS=(nombre    pkg:openssh-server pkg:curl pkg:sudo pkg:git ssh       usuario_sudo prompt)
+SELECCION=(1      1                  1        1        1       1         1            1)
+descripcion_tarea() {
+  case "$1" in
+    nombre)       echo "Cambiar el nombre del equipo y añadirlo a /etc/hosts como nombre.${DOMINIO_LOCAL}" ;;
+    pkg:*)        local p="${1#pkg:}"
+                  if dpkg -s "$p" >/dev/null 2>&1; then echo "Instalar $p (ya instalado)"
+                  else echo "Instalar $p"; fi ;;
+    ssh)          echo "Activar y arrancar el servicio SSH" ;;
+    usuario_sudo) echo "Añadir un usuario al grupo sudo" ;;
+    prompt)       echo "Poner el prompt de root en rojo" ;;
+  esac
+}
+seleccionada() {   # ¿está marcada la tarea con este identificador?
+  local i
+  for i in "${!TAREAS[@]}"; do
+    [ "${TAREAS[$i]}" = "$1" ] && { [ "${SELECCION[$i]}" = 1 ]; return; }
+  done
+  return 1
+}
+
+mostrar_menu() {
+  local i marca
+  {
+    echo
+    echo "Cambios que puede hacer el script:"
+    for i in "${!TAREAS[@]}"; do
+      if [ "${SELECCION[$i]}" = 1 ]; then marca="[x]"; else marca="[ ]"; fi
+      printf '  %d) %s %s\n' "$((i + 1))" "$marca" "$(descripcion_tarea "${TAREAS[$i]}")"
+    done
+    echo
+    echo "Escribe los números para marcar/desmarcar (p. ej.: 2 5), \"t\" = todos, \"n\" = ninguno,"
+    echo "Intro = continuar, \"q\" = salir sin hacer nada."
+  } >/dev/tty
+}
+
+elegir_tareas() {
+  local respuesta n i
+  if ! hay_tty; then
+    aviso "Sin terminal interactiva: se aplicarán todos los cambios."
+    return
+  fi
+  while true; do
+    mostrar_menu
+    printf '> ' >/dev/tty
+    IFS= read -r respuesta </dev/tty || respuesta=""
+    case "$respuesta" in
+      "")      return ;;
+      q|Q)     info "Saliendo sin hacer cambios."; exit 0 ;;
+      t|T)     for i in "${!SELECCION[@]}"; do SELECCION[$i]=1; done ;;
+      n|N)     for i in "${!SELECCION[@]}"; do SELECCION[$i]=0; done ;;
+      *)       for n in ${respuesta//,/ }; do
+                 if [[ "$n" =~ ^[0-9]+$ ]] && [ "$n" -ge 1 ] && [ "$n" -le "${#TAREAS[@]}" ]; then
+                   i=$((n - 1)); SELECCION[$i]=$((1 - SELECCION[$i]))
+                 else
+                   error "Opción no válida: $n"
+                 fi
+               done ;;
+    esac
+  done
+}
+
+confirmar() {
+  local respuesta
+  hay_tty || return 0
+  {
+    echo
+    echo "Se va a aplicar:"
+    seleccionada nombre       && echo "  - Nombre del equipo: $NOMBRE_EQUIPO ($NOMBRE_EQUIPO.$DOMINIO_LOCAL en $FICHERO_HOSTS)"
+    [ "${#PAQUETES[@]}" -gt 0 ] && echo "  - Instalar: ${PAQUETES[*]}"
+    seleccionada ssh          && echo "  - Activar y arrancar el servicio SSH"
+    seleccionada usuario_sudo && [ -n "$USUARIO_SUDO" ] && echo "  - Añadir '$USUARIO_SUDO' al grupo sudo"
+    seleccionada prompt       && echo "  - Prompt de root en rojo"
+    printf '¿Continuar? [S/n]: '
+  } >/dev/tty
+  IFS= read -r respuesta </dev/tty || respuesta=""
+  case "$respuesta" in
+    ""|s|S|si|SI|sí|Sí|y|Y) return 0 ;;
+    *) info "Cancelado. No se ha hecho ningún cambio."; exit 0 ;;
+  esac
+}
+
 principal() {
-  # Las preguntas van al principio para no tener que esperar a que acabe apt
-  preguntar_nombre_equipo
-  preguntar_usuario_sudo
-  configurar_nombre_equipo
+  local t
+  elegir_tareas
+
+  PAQUETES=()
+  for t in "${TAREAS[@]}"; do
+    [[ "$t" == pkg:* ]] && seleccionada "$t" && PAQUETES+=("${t#pkg:}")
+  done
+  if ! seleccionada nombre && [ "${#PAQUETES[@]}" -eq 0 ] && ! seleccionada ssh \
+     && ! seleccionada usuario_sudo && ! seleccionada prompt; then
+    info "No has seleccionado ningún cambio."
+    exit 0
+  fi
+
+  # Las preguntas van antes de instalar para no tener que esperar a que acabe apt
+  seleccionada nombre       && preguntar_nombre_equipo
+  seleccionada usuario_sudo && preguntar_usuario_sudo
+  confirmar
+
+  seleccionada nombre       && configurar_nombre_equipo
   instalar_paquetes
-  anadir_usuario_sudo
-  activar_ssh
-  prompt_root_rojo
+  seleccionada usuario_sudo && anadir_usuario_sudo
+  seleccionada ssh          && activar_ssh
+  seleccionada prompt       && prompt_root_rojo
+  return 0
 }
 
 main() {
   comprobar_root
   comprobar_debian
+  actualizar_lista_paquetes
   principal
-  info "¡Terminado! Abre una nueva sesión de root (o ejecuta: source /root/.bashrc) para ver el prompt rojo."
+  info "¡Terminado!"
+  if seleccionada prompt; then
+    info "Abre una nueva sesión de root (o ejecuta: source /root/.bashrc) para ver el prompt rojo."
+  fi
 }
 
 main "$@"

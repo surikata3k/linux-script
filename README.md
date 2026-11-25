@@ -4,12 +4,19 @@ Script de configuración inicial para Debian que se descarga y ejecuta con un so
 
 ## Qué hace
 
+Primero ejecuta `apt update`. Después muestra un menú con todos los cambios (todos marcados por
+defecto) para que elijas cuáles aplicar: escribe los números para marcarlos o desmarcarlos,
+`t` para todos, `n` para ninguno, Intro para continuar o `q` para salir. Antes de aplicar nada
+muestra un resumen y pide confirmación. Sin terminal interactiva, aplica todos los cambios.
+
+Cambios disponibles:
+
 - Pregunta el nombre del equipo (Intro mantiene el actual), lo cambia y lo añade a `/etc/hosts`
   como `127.0.1.1  nombre.home.arpa nombre`.
 - Pregunta qué usuario añadir al grupo `sudo`. Propone el primer usuario con carpeta en `/home`
   (pulsa Intro para aceptarlo, escribe otro nombre o `-` para no añadir ninguno).
   Sin terminal interactiva, usa el usuario propuesto.
-- Instala `openssh-server`, `curl`, `sudo` y `git`.
+- Instala `openssh-server`, `curl`, `sudo` y `git` (cada paquete se puede elegir por separado).
 - Activa y arranca el servicio SSH.
 - Pone el prompt de `root` en rojo (en `/root/.bashrc`; se puede ejecutar varias veces sin duplicarlo).
 
@@ -41,5 +48,5 @@ Al terminar, abre una nueva sesión de root (o ejecuta `source /root/.bashrc`) p
 
 ## Personalizar
 
-- Para añadir o quitar paquetes, edita la lista `PAQUETES` al principio de `install.sh`.
+- Para añadir o quitar paquetes o tareas, edita las listas `TAREAS` y `SELECCION` (sección «Menú de selección») de `install.sh`; un paquete se añade como `pkg:nombre`.
 - Para añadir otras tareas, crea una función y llámala desde `principal()`.
