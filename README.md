@@ -4,6 +4,9 @@ Script de configuración inicial para Debian que se descarga y ejecuta con un so
 
 ## Qué hace
 
+- Pregunta qué usuario añadir al grupo `sudo`. Propone el primer usuario con carpeta en `/home`
+  (pulsa Intro para aceptarlo, escribe otro nombre o `-` para no añadir ninguno).
+  Sin terminal interactiva, usa el usuario propuesto.
 - Instala `openssh-server`, `curl`, `sudo` y `git`.
 - Activa y arranca el servicio SSH.
 - Pone el prompt de `root` en rojo (en `/root/.bashrc`; se puede ejecutar varias veces sin duplicarlo).

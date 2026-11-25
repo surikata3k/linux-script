@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 #
-# install.sh — Configuración inicial de Debian (openssh-server, curl, sudo, git y prompt de root en rojo)
+# install.sh — Configuración inicial de Debian (openssh-server, curl, sudo, git,
+#              usuario en sudo y prompt de root en rojo)
 #
 # Ejecución en una línea:
 #   curl -fsSL https://raw.githubusercontent.com/surikata3k/linux-script/main/install.sh | sudo bash
@@ -79,8 +80,73 @@ ${fin}
 EOF
 }
 
+# Primer usuario real (que existe en el sistema) con carpeta en /home
+primer_usuario_home() {
+  local dir usuario
+  for dir in /home/*/; do
+    [ -d "$dir" ] || continue
+    usuario=$(basename "$dir")
+    if getent passwd "$usuario" >/dev/null; then
+      echo "$usuario"
+      return
+    fi
+  done
+}
+
+# Pregunta qué usuario añadir a sudo. Se lee de /dev/tty porque, al ejecutar
+# con "wget ... | bash", la entrada estándar es el propio script.
+USUARIO_SUDO=""
+preguntar_usuario_sudo() {
+  local propuesto respuesta
+  propuesto=$(primer_usuario_home)
+
+  if ! { : </dev/tty; } 2>/dev/null; then
+    USUARIO_SUDO="$propuesto"
+    if [ -n "$USUARIO_SUDO" ]; then
+      aviso "Sin terminal interactiva: se usará el usuario propuesto '$USUARIO_SUDO'."
+    else
+      aviso "Sin terminal interactiva y sin usuarios en /home: no se añadirá nadie a sudo."
+    fi
+    return
+  fi
+
+  while true; do
+    if [ -n "$propuesto" ]; then
+      printf '¿Qué usuario quieres añadir a sudo? [%s] (escribe "-" para ninguno): ' "$propuesto" >/dev/tty
+    else
+      printf '¿Qué usuario quieres añadir a sudo? (Intro para ninguno): ' >/dev/tty
+    fi
+    IFS= read -r respuesta </dev/tty || respuesta=""
+    respuesta="${respuesta:-$propuesto}"
+
+    if [ -z "$respuesta" ] || [ "$respuesta" = "-" ]; then
+      USUARIO_SUDO=""
+      aviso "No se añadirá ningún usuario a sudo."
+      return
+    fi
+    if getent passwd "$respuesta" >/dev/null; then
+      USUARIO_SUDO="$respuesta"
+      return
+    fi
+    error "El usuario '$respuesta' no existe. Inténtalo de nuevo."
+  done
+}
+
+anadir_usuario_sudo() {
+  [ -n "$USUARIO_SUDO" ] || return 0
+  if id -nG "$USUARIO_SUDO" | tr ' ' '\n' | grep -qx sudo; then
+    info "El usuario '$USUARIO_SUDO' ya está en el grupo sudo."
+  else
+    info "Añadiendo '$USUARIO_SUDO' al grupo sudo..."
+    usermod -aG sudo "$USUARIO_SUDO"
+    aviso "'$USUARIO_SUDO' tendrá permisos de sudo a partir de su próximo inicio de sesión."
+  fi
+}
+
 principal() {
+  preguntar_usuario_sudo   # se pregunta al principio para no esperar a que acabe apt
   instalar_paquetes
+  anadir_usuario_sudo
   activar_ssh
   prompt_root_rojo
 }
