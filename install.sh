@@ -3,10 +3,10 @@
 # install.sh — Plantilla de script para Debian
 #
 # Ejecución en una línea:
-#   curl -fsSL https://raw.githubusercontent.com/Surikata3k/debian-script/main/install.sh | sudo bash
+#   curl -fsSL https://raw.githubusercontent.com/surikata3k/linux-script/main/install.sh | sudo bash
 #
 # o con wget:
-#   wget -qO- https://raw.githubusercontent.com/Surikata3k/debian-script/main/install.sh | sudo bash
+#   wget -qO- https://raw.githubusercontent.com/surikata3k/linux-script/main/install.sh | sudo bash
 #
 set -euo pipefail
 
